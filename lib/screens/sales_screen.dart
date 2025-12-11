@@ -1,0 +1,89 @@
+import 'package:flutter/material.dart';
+import '../services/firestore_item_service.dart';
+import '../services/firestore_sale_service.dart';
+
+class SalesScreen extends StatefulWidget {
+  @override
+  _SalesScreenState createState() => _SalesScreenState();
+}
+
+class _SalesScreenState extends State<SalesScreen> {
+  final itemSvc = FirestoreItemService();
+  final saleSvc = FirestoreSaleService();
+
+  Map<String, int> cart = {}; // itemId -> qty
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('Sales')),
+      body: Row(
+        children: [
+          Expanded(child: _itemsList()),
+          Container(width: 360, child: _cartPanel()),
+        ],
+      ),
+    );
+  }
+
+  Widget _itemsList() {
+    return StreamBuilder(
+      stream: itemSvc.streamItems(),
+      builder: (context, AsyncSnapshot snapshot) {
+        if (!snapshot.hasData) return Center(child: CircularProgressIndicator());
+        final items = snapshot.data;
+        return ListView.builder(
+          itemCount: items.length,
+          itemBuilder: (context, i) {
+            final it = items[i];
+            return ListTile(
+              title: Text(it.name),
+              subtitle: Text('Qty: ${it.quantity} • Price: ${it.price.toStringAsFixed(2)}'),
+              trailing: ElevatedButton(
+                child: Text('Add'),
+                onPressed: () {
+                  setState(() => cart[it.id] = (cart[it.id] ?? 0) + 1);
+                },
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _cartPanel() {
+    return Column(
+      children: [
+        Expanded(child: ListView(children: cart.entries.map((e) => ListTile(title: Text(e.key), subtitle: Text('Qty: ${e.value}'), trailing: IconButton(icon: Icon(Icons.remove_circle), onPressed: () => setState(() { if (e.value>1) cart[e.key]=e.value-1; else cart.remove(e.key); }))) .toList() )),
+        ElevatedButton(onPressed: _checkout, child: Text('Checkout'))
+      ],
+    );
+  }
+
+  void _checkout() async {
+    if (cart.isEmpty) return;
+    // Build sale payload with minimal data
+    final items = cart.entries.map((e) => {'itemId': e.key, 'qty': e.value, 'unitPrice': 0.0, 'lineTotal': 0.0}).toList();
+    final sale = {
+      'customerId': null,
+      'date': DateTime.now(),
+      'totalAmount': 0.0,
+      'items': items,
+      'status': 'paid',
+    };
+    // For now use Firestore directly since we have Sale model/service
+    // Convert to Sale model in future; minimal implementation:
+    try {
+      // decrease stock
+      await saleSvc.createSale(
+        // create simple Sale instance using dynamic mapping
+        (await Future.value(null)) ??
+            throw Exception('Internal: placeholder'),
+      );
+    } catch (e) {
+      // simplified feedback
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Checkout error: $e')));
+    }
+  }
+}
