@@ -1,13 +1,20 @@
-name: Multi-Platform CI
+name: Multi-Platform CI (Mobile & Desktop)
 
 on:
+  # تشغيل عند الدفع أو فتح طلبات الدمج للفرعين الرئيسيين
   push:
     branches: [ "main", "master" ]
   pull_request:
     branches: [ "main", "master" ]
 
+# تعريف متغير ثابت لإصدار Flutter المستخدم
+env:
+  FLUTTER_VERSION: '3.22.0' # <<-- يجب استبدال هذا بالإصدار الدقيق الذي لديك
+
 jobs:
-  # وظيفة التحقق من الكود والاختبارات
+  # ----------------------------------------------------
+  # 1. وظيفة التحقق من الكود والاختبارات (مرة واحدة فقط)
+  # ----------------------------------------------------
   analysis_and_tests:
     runs-on: ubuntu-latest
 
@@ -15,11 +22,11 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
       
-    - name: Setup Flutter
-      # نستخدم ubuntu لإعداد Flutter والحصول على الاعتمادات
+    - name: Setup Flutter SDK
+      # إعداد Flutter باستخدام الإصدار المحدد في env
       uses: subosito/flutter-action@v2
       with:
-        flutter-version: '3.x.x' # ثبت الإصدار هنا
+        flutter-version: ${{ env.FLUTTER_VERSION }}
         channel: 'stable'
 
     - name: Get Dependencies
@@ -28,28 +35,29 @@ jobs:
     - name: Analyze Code
       run: flutter analyze
       
-    - name: Run Tests
-      # تشغيل الاختبارات هو خطوة مستقلة عن المنصة
+    - name: Run Unit and Widget Tests
       run: flutter test
 
-  # وظيفة بناء التطبيق لكل منصة (Build Job)
+  # ----------------------------------------------------
+  # 2. وظيفة بناء التطبيق لكل منصة (باستخدام Matrix)
+  # ----------------------------------------------------
   build_platform:
-    # هذا جزء المصفوفة (Matrix) الذي يسمح بتشغيل نفس الوظيفة على أنظمة تشغيل مختلفة
     runs-on: ${{ matrix.os }}
-    needs: analysis_and_tests # يتطلب نجاح وظيفة الاختبار أولاً
+    needs: analysis_and_tests # يبدأ فقط بعد نجاح الاختبارات والتحليل
     
     strategy:
       fail-fast: false
       matrix:
-        # تعريف المنصات وأنظمة التشغيل التي ستنفذ عليها عملية البناء
+        # تعريف أنظمة التشغيل والمنصات المراد بناءها
         os: [ubuntu-latest, windows-latest, macos-latest]
         platform: [android, windows, ios, web]
-        # تصفية بعض التركيبات غير الضرورية (مثل بناء iOS على Windows أو Linux)
+        
+        # استثناء التركيبات غير الضرورية/المتعارضة:
         exclude:
           - os: ubuntu-latest
-            platform: ios
+            platform: ios # لا يمكن بناء iOS على Linux
           - os: windows-latest
-            platform: ios
+            platform: ios # لا يمكن بناء iOS على Windows
             
     steps:
     - name: Checkout Code
@@ -58,12 +66,13 @@ jobs:
     - name: Setup Flutter SDK
       uses: subosito/flutter-action@v2
       with:
-        flutter-version: '3.x.x' # ثبت نفس الإصدار هنا
+        flutter-version: ${{ env.FLUTTER_VERSION }}
         channel: 'stable'
 
-    # ----------------------------------------------------
-    # خطوات البناء المخصصة لكل منصة
-    # ----------------------------------------------------
+    - name: Get Dependencies
+      run: flutter pub get
+
+    # --- خطوات البناء ---
 
     - name: 📱 Build Android (APK)
       if: matrix.platform == 'android'
@@ -73,25 +82,28 @@ jobs:
       if: matrix.platform == 'windows'
       run: flutter build windows --release
 
-    - name: 🖥️ Build macOS (App Bundle)
-      if: matrix.platform == 'ios' || matrix.platform == 'macos'
-      # ملاحظة: بناء iOS يتطلب إعداد مفاتيح التوقيع (Signing Keys) بشكل معقد
-      run: flutter build macos --release
+    - name: 🖥️ Build Linux (App Bundle)
+      if: matrix.platform == 'linux'
+      run: flutter build linux --release
 
+    - name: 🍏 Build iOS/macOS (App Bundle)
+      # سيعمل هذا الشرط فقط على macOS
+      if: matrix.platform == 'ios' || matrix.platform == 'macos'
+      run: flutter build ios --no-codesign # أو flutter build macos --release
+      
     - name: 🌐 Build Web
       if: matrix.platform == 'web'
       run: flutter build web --release
 
-    # ----------------------------------------------------
-    # خطوة حفظ الملفات الناتجة (Artifacts)
-    # ----------------------------------------------------
+    # --- خطوة حفظ الملفات الناتجة (Artifacts) ---
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       with:
         name: ${{ matrix.platform }}-build-${{ github.sha }}
-        # تحديد المسار الصحيح بناءً على المنصة
+        # تحديد المسار الصحيح للملف الذي تم بناؤه
         path: |
           ${{ matrix.platform == 'android' && 'build/app/outputs/flutter-apk/app-release.apk' || '' }}
           ${{ matrix.platform == 'windows' && 'build/windows/runner/Release' || '' }}
-          ${{ matrix.platform == 'macos' && 'build/macos/Build/Products/Release' || '' }}
+          ${{ matrix.platform == 'linux' && 'build/linux/x64/release/bundle' || '' }}
+          ${{ matrix.platform == 'ios' && 'build/ios/iphoneos/Runner.app' || '' }}
           ${{ matrix.platform == 'web' && 'build/web' || '' }}
