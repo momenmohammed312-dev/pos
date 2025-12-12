@@ -1,15 +1,15 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class Sale {
-  final String id;
+  final String? id; // required – بقى optional
   final String? customerId;
   final DateTime date;
   final double totalAmount;
-  final List<Map<String, dynamic>> items; // [{itemId, qty, unitPrice, lineTotal}]
-  final String status; // paid/partial/unpaid
+  final List<Map<String, dynamic>> items;
+  final String status; // paid / partial / unpaid
 
   Sale({
-    required this.id,
+    this.id,
     this.customerId,
     required this.date,
     required this.totalAmount,
@@ -21,7 +21,9 @@ class Sale {
     return Sale(
       id: id,
       customerId: map['customerId'],
-      date: map['date'] != null ? (map['date'] as Timestamp).toDate() : DateTime.now(),
+      date: map['date'] != null
+          ? (map['date'] as Timestamp).toDate()
+          : DateTime.now(),
       totalAmount: (map['totalAmount'] ?? 0).toDouble(),
       items: List<Map<String, dynamic>>.from(map['items'] ?? []),
       status: map['status'] ?? 'unpaid',
