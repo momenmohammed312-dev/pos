@@ -1,19 +1,19 @@
-name: Multi-Platform CI (Mobile & Desktop)
+name: Build Android and Windows Releases
 
 on:
-  # تشغيل عند الدفع أو فتح طلبات الدمج
+  # التشغيل عند الدفع إلى الفرع الرئيسي
   push:
     branches: [ "main", "master" ]
   pull_request:
     branches: [ "main", "master" ]
 
-# تعريف متغير ثابت لإصدار Flutter (بناءً على flutter doctor لديك)
+# تعريف متغير ثابت لإصدار Flutter (بناءً على إصدارك)
 env:
   FLUTTER_VERSION: '3.35.7' # <--- تم التعديل إلى الإصدار الذي لديك
-  
+
 jobs:
   # ----------------------------------------------------
-  # 1. وظيفة التحقق من الكود والاختبارات
+  # 1. تحليل واختبار الكود (على Ubuntu)
   # ----------------------------------------------------
   analysis_and_tests:
     runs-on: ubuntu-latest
@@ -38,22 +38,12 @@ jobs:
       run: flutter test
 
   # ----------------------------------------------------
-  # 2. وظيفة بناء التطبيق لكل منصة (Build Job)
+  # 2. بناء نسخة Windows (على Windows Runner)
   # ----------------------------------------------------
-  build_platform:
-    runs-on: ${{ matrix.os }}
-    needs: analysis_and_tests 
+  build_windows:
+    runs-on: windows-latest # استخدام بيئة Windows للبناء
+    needs: analysis_and_tests
     
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest] # التركيز على Android و Windows و Linux (على Ubuntu)
-        platform: [android, windows, linux, web]
-        
-        exclude:
-          - os: windows-latest
-            platform: linux # لا يمكن بناء Linux على Windows
-            
     steps:
     - name: Checkout Code
       uses: actions/checkout@v4
@@ -63,52 +53,56 @@ jobs:
       with:
         flutter-version: ${{ env.FLUTTER_VERSION }}
         channel: 'stable'
-        # تثبيت وتكوين بيئة Visual Studio على Windows
-        # تثبيت حزم التبعيات الضرورية على Linux/Ubuntu
-        
-    # خطوة مهمة: تمكين المنصة على جهاز GitHub Actions
-    - name: Enable Desktop Support
-      if: matrix.platform == 'windows' || matrix.platform == 'linux'
-      run: flutter config --enable-${{ matrix.platform }}-desktop
+
+    # خطوة مهمة: تمكين دعم منصة Windows
+    - name: Enable Windows Support
+      run: flutter config --enable-windows-desktop
 
     - name: Get Dependencies
       run: flutter pub get
+    
+    - name: Build Windows Executable
+      run: flutter build windows --release
 
-    # --- خطوات البناء ---
+    - name: Upload Windows Artifact (Release)
+      uses: actions/upload-artifact@v4
+      with:
+        name: windows-release-v-${{ github.sha }}
+        path: build/windows/runner/Release/
+        
+  # ----------------------------------------------------
+  # 3. بناء نسخة Android (على Ubuntu Runner)
+  # ----------------------------------------------------
+  build_android:
+    runs-on: ubuntu-latest # استخدام بيئة Linux (الأسرع والأرخص) للبناء
+    needs: analysis_and_tests
+    
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+      
+    - name: Setup Flutter SDK
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: ${{ env.FLUTTER_VERSION }}
+        channel: 'stable'
 
-    - name: 📱 Build Android (APK)
-      if: matrix.platform == 'android'
-      # نحتاج إلى تثبيت Java/SDK لضمان عمل Gradle
+    # تهيئة Java (تساعد في حل مشكلات Gradle)
+    - name: Setup Java 17 for Gradle
       uses: actions/setup-java@v4
       with:
         distribution: 'zulu'
         java-version: '17'
         cache: 'gradle'
+
+    - name: Get Dependencies
+      run: flutter pub get
       
     - name: Build Android APK
-      if: matrix.platform == 'android'
       run: flutter build apk --release
-      
-    - name: 💻 Build Windows (EXE)
-      if: matrix.platform == 'windows'
-      run: flutter build windows --release
 
-    - name: 🖥️ Build Linux (App Bundle)
-      if: matrix.platform == 'linux'
-      run: flutter build linux --release
-      
-    - name: 🌐 Build Web
-      if: matrix.platform == 'web'
-      run: flutter build web --release
-
-    # --- خطوة حفظ الملفات الناتجة (Artifacts) ---
-    - name: Upload Artifacts
+    - name: Upload Android Artifact (APK)
       uses: actions/upload-artifact@v4
       with:
-        name: ${{ matrix.platform }}-build-${{ github.sha }}
-        # تحديد المسار الصحيح للملف الذي تم بناؤه
-        path: |
-          ${{ matrix.platform == 'android' && 'build/app/outputs/flutter-apk/app-release.apk' || '' }}
-          ${{ matrix.platform == 'windows' && 'build/windows/runner/Release' || '' }}
-          ${{ matrix.platform == 'linux' && 'build/linux/x64/release/bundle' || '' }}
-          ${{ matrix.platform == 'web' && 'build/web' || '' }}
+        name: android-release-apk-v-${{ github.sha }}
+        path: build/app/outputs/flutter-apk/app-release.apk
