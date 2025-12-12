@@ -1,35 +1,97 @@
-name: Build Android APK
+name: Multi-Platform CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
 
 jobs:
-  build:
+  # وظيفة التحقق من الكود والاختبارات
+  analysis_and_tests:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+    - name: Checkout Code
+      uses: actions/checkout@v4
+      
+    - name: Setup Flutter
+      # نستخدم ubuntu لإعداد Flutter والحصول على الاعتمادات
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.x.x' # ثبت الإصدار هنا
+        channel: 'stable'
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
+    - name: Get Dependencies
+      run: flutter pub get
+      
+    - name: Analyze Code
+      run: flutter analyze
+      
+    - name: Run Tests
+      # تشغيل الاختبارات هو خطوة مستقلة عن المنصة
+      run: flutter test
 
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version-file: pubspec.yaml
+  # وظيفة بناء التطبيق لكل منصة (Build Job)
+  build_platform:
+    # هذا جزء المصفوفة (Matrix) الذي يسمح بتشغيل نفس الوظيفة على أنظمة تشغيل مختلفة
+    runs-on: ${{ matrix.os }}
+    needs: analysis_and_tests # يتطلب نجاح وظيفة الاختبار أولاً
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        # تعريف المنصات وأنظمة التشغيل التي ستنفذ عليها عملية البناء
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        platform: [android, windows, ios, web]
+        # تصفية بعض التركيبات غير الضرورية (مثل بناء iOS على Windows أو Linux)
+        exclude:
+          - os: ubuntu-latest
+            platform: ios
+          - os: windows-latest
+            platform: ios
+            
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
 
-      - name: Get packages
-        run: flutter pub get
+    - name: Setup Flutter SDK
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.x.x' # ثبت نفس الإصدار هنا
+        channel: 'stable'
 
-      - name: Build APK
-        run: flutter build apk --release
+    # ----------------------------------------------------
+    # خطوات البناء المخصصة لكل منصة
+    # ----------------------------------------------------
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+    - name: 📱 Build Android (APK)
+      if: matrix.platform == 'android'
+      run: flutter build apk --release
+      
+    - name: 💻 Build Windows (EXE)
+      if: matrix.platform == 'windows'
+      run: flutter build windows --release
+
+    - name: 🖥️ Build macOS (App Bundle)
+      if: matrix.platform == 'ios' || matrix.platform == 'macos'
+      # ملاحظة: بناء iOS يتطلب إعداد مفاتيح التوقيع (Signing Keys) بشكل معقد
+      run: flutter build macos --release
+
+    - name: 🌐 Build Web
+      if: matrix.platform == 'web'
+      run: flutter build web --release
+
+    # ----------------------------------------------------
+    # خطوة حفظ الملفات الناتجة (Artifacts)
+    # ----------------------------------------------------
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.platform }}-build-${{ github.sha }}
+        # تحديد المسار الصحيح بناءً على المنصة
+        path: |
+          ${{ matrix.platform == 'android' && 'build/app/outputs/flutter-apk/app-release.apk' || '' }}
+          ${{ matrix.platform == 'windows' && 'build/windows/runner/Release' || '' }}
+          ${{ matrix.platform == 'macos' && 'build/macos/Build/Products/Release' || '' }}
+          ${{ matrix.platform == 'web' && 'build/web' || '' }}
