@@ -1,20 +1,19 @@
 name: Multi-Platform CI (Mobile & Desktop)
 
 on:
-  # التشغيل عند الدفع (Push) أو فتح طلبات الدمج (Pull Requests) للفرعين الرئيسيين
+  # تشغيل عند الدفع أو فتح طلبات الدمج
   push:
     branches: [ "main", "master" ]
   pull_request:
     branches: [ "main", "master" ]
 
-# تعريف متغير ثابت لإصدار Flutter المستخدم لتجنب أخطاء التحديد
+# تعريف متغير ثابت لإصدار Flutter (بناءً على flutter doctor لديك)
 env:
-  FLUTTER_VERSION: '3.22.0' # <<-- غيّر هذا الرقم إلى الإصدار الذي تملكه أو تريده
-
+  FLUTTER_VERSION: '3.35.7' # <--- تم التعديل إلى الإصدار الذي لديك
+  
 jobs:
   # ----------------------------------------------------
-  # 1. وظيفة التحقق من الكود والاختبارات (Analysis & Tests)
-  # الهدف: التأكد من سلامة الكود قبل محاولة البناء
+  # 1. وظيفة التحقق من الكود والاختبارات
   # ----------------------------------------------------
   analysis_and_tests:
     runs-on: ubuntu-latest
@@ -24,7 +23,6 @@ jobs:
       uses: actions/checkout@v4
       
     - name: Setup Flutter SDK
-      # هنا يتم تحديد الإصدار بدقة باستخدام متغير البيئة المُعرف
       uses: subosito/flutter-action@v2
       with:
         flutter-version: ${{ env.FLUTTER_VERSION }}
@@ -33,7 +31,7 @@ jobs:
     - name: Get Dependencies
       run: flutter pub get
       
-    - name: Analyze Code (Fails on Warnings/Errors)
+    - name: Analyze Code
       run: flutter analyze
       
     - name: Run Unit and Widget Tests
@@ -41,26 +39,21 @@ jobs:
 
   # ----------------------------------------------------
   # 2. وظيفة بناء التطبيق لكل منصة (Build Job)
-  # تستخدم المصفوفة (Matrix) لتشغيل نفس الخطوات على أنظمة تشغيل مختلفة
   # ----------------------------------------------------
   build_platform:
     runs-on: ${{ matrix.os }}
-    needs: analysis_and_tests # يبدأ فقط إذا نجحت وظيفة الاختبارات
+    needs: analysis_and_tests 
     
     strategy:
       fail-fast: false
       matrix:
-        # تحديد أنظمة التشغيل (OS) والمنصات (Platform) المراد بناءها
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        platform: [android, windows, linux, web] # استبعاد iOS هنا لتجنب التعقيد بخصوص التوقيع
+        os: [ubuntu-latest, windows-latest] # التركيز على Android و Windows و Linux (على Ubuntu)
+        platform: [android, windows, linux, web]
         
-        # استثناء التركيبات غير الضرورية:
         exclude:
           - os: windows-latest
             platform: linux # لا يمكن بناء Linux على Windows
-          - os: macos-latest
-            platform: linux # نركز على المنصات الأساسية لـ macOS
-
+            
     steps:
     - name: Checkout Code
       uses: actions/checkout@v4
@@ -70,6 +63,13 @@ jobs:
       with:
         flutter-version: ${{ env.FLUTTER_VERSION }}
         channel: 'stable'
+        # تثبيت وتكوين بيئة Visual Studio على Windows
+        # تثبيت حزم التبعيات الضرورية على Linux/Ubuntu
+        
+    # خطوة مهمة: تمكين المنصة على جهاز GitHub Actions
+    - name: Enable Desktop Support
+      if: matrix.platform == 'windows' || matrix.platform == 'linux'
+      run: flutter config --enable-${{ matrix.platform }}-desktop
 
     - name: Get Dependencies
       run: flutter pub get
@@ -77,6 +77,15 @@ jobs:
     # --- خطوات البناء ---
 
     - name: 📱 Build Android (APK)
+      if: matrix.platform == 'android'
+      # نحتاج إلى تثبيت Java/SDK لضمان عمل Gradle
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'zulu'
+        java-version: '17'
+        cache: 'gradle'
+      
+    - name: Build Android APK
       if: matrix.platform == 'android'
       run: flutter build apk --release
       
