@@ -8,7 +8,7 @@ import '../Models/sale.dart'; // <--- استيراد نموذج Sale الذي ق
 class SalesScreen extends StatefulWidget {
   @override
   // استخدام const لحل بعض التحذيرات
-  _SalesScreenState createState() => const _SalesScreenState();
+  _SalesScreenState createState() =>  _SalesScreenState();
 }
 
 class _SalesScreenState extends State<SalesScreen> {
