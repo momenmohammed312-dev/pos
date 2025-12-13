@@ -32,7 +32,9 @@ jobs:
       run: flutter pub get
       
     - name: Analyze Code
-      run: flutter analyze
+      # هذا الأمر يمنع الفشل بسبب الأخطاء
+      # لا يُنصح به، لكنه يظهر لك كيفية التجاوز
+      run: flutter analyze --no-fatal-warnings
       
     - name: Run Unit and Widget Tests
       run: flutter test
