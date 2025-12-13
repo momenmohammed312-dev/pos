@@ -128,14 +128,12 @@ class _SalesScreenState extends State<SalesScreen> {
           .toList(),
       status: 'paid', // يمكنك تغيير هذا بناءً على منطق الدفع
     );
-
-    try {
-      await saleSvc.createSale(saleData); // تمرير كائن Sale
-
-      setState(() {
-        cart.clear();
+   try {
+      await saleSvc.createSale(saleData); // تمرير كائن Sale
+       setState(() {
+        cart.clear();
         total = 0.0;
-      });
+      });
       
       // استخدام if (mounted) يحل خطأ use_build_context_synchronously
       if (mounted) { 
@@ -143,12 +141,13 @@ class _SalesScreenState extends State<SalesScreen> {
           const SnackBar(content: Text('Sale completed')), // تم إضافة const
         );
       }
-    } catch (e) {
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Checkout error: $e')),
         );
       }
-    }
-  }
+    }
+  }
 }
+
